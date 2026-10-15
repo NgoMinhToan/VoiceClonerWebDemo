@@ -1,4 +1,4 @@
-// VoiceClonerWebDemo - Standalone Static Client Logic
+// VoiceClonerWebDemo - Standalone Static Client Logic (Direct connection to vienueTTS_server)
 
 let currentTab = 'tts';
 let availableVoices = [];
@@ -6,23 +6,25 @@ let audioContext = null;
 let currentAudioElement = null;
 let mediaRecorder = null;
 let recordedChunks = [];
+let recordedAudioBlob = null;
 let recordingTimer = null;
 let recordingSeconds = 0;
+let currentClonedNpzBase64 = null;
 
 function getServerUrl() {
-  return localStorage.getItem('vc_server_url') || 'http://localhost:8000';
+  return localStorage.getItem('vc_server_url') || 'http://localhost:8001';
 }
 
 function getApiKey() {
-  return localStorage.getItem('vc_api_key') || 'vc_live_w1e2b3d4e5m6o7k8e9y0z1x2c3v4b5n6';
+  return localStorage.getItem('vc_api_key') || 'vtts_worker_secret_key_123';
 }
 
 function saveConnectionSettings() {
   const url = document.getElementById('inputServerUrl').value.trim().replace(/\/+$/, '');
   const key = document.getElementById('inputApiKey').value.trim();
-  localStorage.setItem('vc_server_url', url || 'http://localhost:8000');
-  localStorage.setItem('vc_api_key', key);
-  showToast('Đã lưu thông tin kết nối!', 'success');
+  localStorage.setItem('vc_server_url', url || 'http://localhost:8001');
+  localStorage.setItem('vc_api_key', key || 'vtts_worker_secret_key_123');
+  showToast('Đã lưu thông tin kết nối Voice Server!', 'success');
   checkConnection();
 }
 
@@ -57,10 +59,16 @@ async function checkConnection() {
   const pnaBanner = document.getElementById('pnaNoticeBanner');
   try {
     statusText.textContent = 'Đang kiểm tra...';
-    const res = await serverFetch('/health');
+    // Test both /internal/v1/health and /health
+    let res = await serverFetch('/internal/v1/health');
+    if (!res.ok) {
+      res = await serverFetch('/health');
+    }
     if (res.ok) {
+      const data = await res.json();
+      const count = data.total_voices || 23;
       badge.className = 'flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
-      statusText.textContent = 'Đã kết nối Server';
+      statusText.textContent = `Voice Server (${count} giọng)`;
       if (pnaBanner) pnaBanner.classList.add('hidden');
       loadVoices();
     } else {
@@ -68,7 +76,7 @@ async function checkConnection() {
     }
   } catch (err) {
     badge.className = 'flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30';
-    statusText.textContent = 'Mất kết nối Server';
+    statusText.textContent = 'Mất kết nối Voice Server';
     if (window.location.protocol === 'https:' && (getServerUrl().includes('localhost') || getServerUrl().includes('127.0.0.1'))) {
       if (pnaBanner) pnaBanner.classList.remove('hidden');
     }
@@ -90,9 +98,13 @@ function switchTab(tabId) {
 
 async function loadVoices() {
   try {
-    const res = await serverFetch('/v1/voices');
+    let res = await serverFetch('/internal/v1/voices');
+    if (!res.ok) {
+      res = await serverFetch('/v1/voices');
+    }
     if (res.ok) {
-      availableVoices = await res.json();
+      const data = await res.json();
+      availableVoices = data.voices || (Array.isArray(data) ? data : []);
       populateVoiceSelect();
       if (currentTab === 'library') renderLibrary();
     }
@@ -104,9 +116,17 @@ async function loadVoices() {
 function populateVoiceSelect() {
   const sel = document.getElementById('selectVoice');
   if (!sel) return;
-  sel.innerHTML = availableVoices.map(v => `
-    <option value="${v.id}">${v.name} (${v.accent || v.spec})</option>
+
+  let optionsHtml = '';
+  if (currentClonedNpzBase64) {
+    optionsHtml += `<option value="__cloned_voice__" selected>🌟 [Giọng Clone Đã Trích Xuất .npz]</option>`;
+  }
+
+  optionsHtml += availableVoices.map(v => `
+    <option value="${v.id || v.name}">${v.name} (${v.description || v.gender})</option>
   `).join('');
+
+  sel.innerHTML = optionsHtml;
 }
 
 async function synthesizeSpeech() {
@@ -116,7 +136,7 @@ async function synthesizeSpeech() {
     return;
   }
 
-  const voice = document.getElementById('selectVoice').value;
+  const voiceVal = document.getElementById('selectVoice').value;
   const speed = parseFloat(document.getElementById('inputSpeed').value) || 1.0;
   const pitch = parseInt(document.getElementById('inputPitch').value) || 0;
   const emotion = parseInt(document.getElementById('inputEmotion').value) || 0;
@@ -127,31 +147,47 @@ async function synthesizeSpeech() {
   btn.disabled = true;
   btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Đang tổng hợp 48kHz WAV...`;
 
+  const payload = {
+    text,
+    speed,
+    pitch,
+    emotion,
+    denoise,
+    smart_pause: smartPause,
+    format: 'wav'
+  };
+
+  if (voiceVal === '__cloned_voice__' && currentClonedNpzBase64) {
+    payload.ref_npz_base64 = currentClonedNpzBase64;
+  } else {
+    payload.voice = voiceVal;
+    payload.voice_id = voiceVal;
+  }
+
   try {
-    const res = await serverFetch('/v1/audio/speech', {
+    let res = await serverFetch('/internal/v1/synthesize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text,
-        voice,
-        speed,
-        pitch,
-        emotion,
-        denoise,
-        smart_pause: smartPause,
-        format: 'wav'
-      })
+      body: JSON.stringify(payload)
     });
 
     if (!res.ok) {
+      res = await serverFetch('/v1/synthesize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
+
+    if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || `Lỗi ${res.status}`);
+      throw new Error(err.detail || `Lỗi HTTP ${res.status}`);
     }
 
     const audioBlob = await res.blob();
     const audioUrl = URL.createObjectURL(audioBlob);
     playGeneratedAudio(audioUrl);
-    showToast('Tổng hợp âm thanh thành công!', 'success');
+    showToast('Tổng hợp âm thanh 48kHz thành công!', 'success');
   } catch (err) {
     showToast(`Thất bại: ${err.message}`, 'error');
   } finally {
@@ -175,20 +211,39 @@ function playGeneratedAudio(url) {
 
 async function previewVoice(voiceId) {
   try {
-    showToast('Đang tải bản nghe thử...', 'info');
-    const res = await serverFetch('/v1/voices/preview', {
+    showToast('Đang kết xuất bản nghe thử...', 'info');
+    const payload = {
+      text: "Xin chào! Đây là bản nghe thử được kết xuất trực tiếp bằng công nghệ AI VieNeu-TTS 48kHz.",
+      voice: voiceId,
+      voice_id: voiceId,
+      format: "wav"
+    };
+
+    let res = await serverFetch('/internal/v1/synthesize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voice_id: voiceId })
+      body: JSON.stringify(payload)
     });
+
+    if (!res.ok) {
+      res = await serverFetch('/v1/synthesize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
+
     if (res.ok) {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audio.play();
+      showToast('Đang phát bản nghe thử!', 'success');
+    } else {
+      showToast('Lỗi khi nghe thử giọng', 'error');
     }
   } catch (e) {
-    showToast('Lỗi khi nghe thử', 'error');
+    showToast('Lỗi kết nối khi nghe thử', 'error');
   }
 }
 
@@ -197,7 +252,7 @@ function renderLibrary() {
   if (!container) return;
 
   if (!availableVoices.length) {
-    container.innerHTML = `<div class="col-span-3 text-center py-12 text-slate-500">Đang nạp danh mục giọng đọc hoặc chưa kết nối server...</div>`;
+    container.innerHTML = `<div class="col-span-3 text-center py-12 text-slate-500">Đang nạp danh mục giọng đọc từ Voice Server...</div>`;
     return;
   }
 
@@ -209,13 +264,13 @@ function renderLibrary() {
         </div>
         <div>
           <h4 class="font-bold text-sm text-white">${v.name}</h4>
-          <span class="text-[11px] text-slate-400">${v.accent || 'Chuẩn'} • ${v.gender === 'female' ? 'Nữ' : 'Nam'}</span>
+          <span class="text-[11px] text-slate-400">${v.gender === 'female' ? 'Nữ' : 'Nam'} • ${v.style || 'Tự nhiên'}</span>
         </div>
       </div>
-      <p class="text-xs text-slate-400 italic">"${v.sample_text || v.description || 'Giọng đọc chuẩn AI VieNeu-TTS 48kHz'}"</p>
+      <p class="text-xs text-slate-400 italic">"${v.description || 'Giọng đọc chuẩn AI VieNeu-TTS 48kHz'}"</p>
       <div class="flex items-center justify-between pt-2 border-t border-slate-800">
-        <span class="text-[10px] text-indigo-300 font-semibold px-2 py-0.5 rounded bg-indigo-500/10">${v.spec || '48kHz HQ'}</span>
-        <button onclick="previewVoice('${v.id}')" class="px-3 py-1 text-xs font-semibold rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 transition flex items-center space-x-1">
+        <span class="text-[10px] text-indigo-300 font-semibold px-2 py-0.5 rounded bg-indigo-500/10">48kHz HQ</span>
+        <button onclick="previewVoice('${v.id || v.name}')" class="px-3 py-1 text-xs font-semibold rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 transition flex items-center space-x-1">
           <i class="fa-solid fa-play text-[10px]"></i>
           <span>Nghe thử 3s</span>
         </button>
@@ -224,7 +279,7 @@ function renderLibrary() {
   `).join('');
 }
 
-// Studio Voice Recording
+// Studio Voice Recording & Embedding Extraction
 async function toggleRecording() {
   const btn = document.getElementById('btnRecord');
   const timerLabel = document.getElementById('recordTimer');
@@ -245,10 +300,11 @@ async function toggleRecording() {
       if (e.data.size > 0) recordedChunks.push(e.data);
     };
     mediaRecorder.onstop = () => {
-      const blob = new Blob(recordedChunks, { type: 'audio/wav' });
-      const url = URL.createObjectURL(blob);
+      recordedAudioBlob = new Blob(recordedChunks, { type: 'audio/wav' });
+      const url = URL.createObjectURL(recordedAudioBlob);
       document.getElementById('recordedAudioPreview').src = url;
       document.getElementById('recordedAudioContainer').classList.remove('hidden');
+      document.getElementById('btnExtractEmbedding').classList.remove('hidden');
       showToast('Đã thu âm xong mẫu giọng!', 'success');
     };
 
@@ -267,6 +323,66 @@ async function toggleRecording() {
   } catch (err) {
     showToast('Không thể truy cập microphone!', 'error');
   }
+}
+
+async function extractRecordedEmbedding() {
+  if (!recordedAudioBlob) {
+    showToast('Chưa có mẫu âm thanh để trích xuất!', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('btnExtractEmbedding');
+  const badge = document.getElementById('embeddingStatusBadge');
+  const btnUse = document.getElementById('btnUseClonedVoice');
+
+  btn.disabled = true;
+  btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-1.5"></i> Đang trích xuất đặc trưng (.npz)...`;
+
+  try {
+    const formData = new FormData();
+    formData.append('audio_file', recordedAudioBlob, 'voice_sample.wav');
+
+    let res = await serverFetch('/internal/v1/embed', {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      res = await serverFetch('/v1/embed', {
+        method: 'POST',
+        body: formData,
+      });
+    }
+
+    if (!res.ok) {
+      throw new Error(`Voice Server trả về mã ${res.status}`);
+    }
+
+    const npzBlob = await res.blob();
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64Data = reader.result.split(',')[1];
+      currentClonedNpzBase64 = base64Data;
+      populateVoiceSelect();
+
+      badge.textContent = '✓ Đã trích xuất thành công đặc trưng speaker embedding (.npz)!';
+      badge.classList.remove('hidden');
+      btnUse.classList.remove('hidden');
+      showToast('Trích xuất đặc trưng giọng clone thành công!', 'success');
+    };
+    reader.readAsDataURL(npzBlob);
+  } catch (err) {
+    showToast(`Trích xuất thất bại: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<i class="fa-solid fa-dna"></i> <span>Trích Xuất Đặc Trưng Giọng (.npz)</span>`;
+  }
+}
+
+function useClonedVoiceForTts() {
+  switchTab('tts');
+  const sel = document.getElementById('selectVoice');
+  if (sel) sel.value = '__cloned_voice__';
+  showToast('Đã kích hoạt giọng clone trong TTS Studio!', 'success');
 }
 
 document.addEventListener('DOMContentLoaded', () => {

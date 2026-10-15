@@ -32,12 +32,12 @@
       <!-- CONNECTION CONFIGURATION INPUTS -->
       <div class="flex flex-wrap items-center gap-2">
         <div class="flex items-center bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 text-xs">
-          <span class="text-slate-400 mr-2"><i class="fa-solid fa-server mr-1"></i>Server:</span>
-          <input id="inputServerUrl" type="text" placeholder="http://localhost:8000" class="bg-transparent text-slate-200 focus:outline-none w-36 sm:w-48 mono">
+          <span class="text-slate-400 mr-2"><i class="fa-solid fa-server mr-1"></i>Voice Server:</span>
+          <input id="inputServerUrl" type="text" placeholder="http://localhost:8001" class="bg-transparent text-slate-200 focus:outline-none w-36 sm:w-48 mono">
         </div>
         <div class="flex items-center bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 text-xs">
-          <span class="text-slate-400 mr-2"><i class="fa-solid fa-key mr-1"></i>Client API Key:</span>
-          <input id="inputApiKey" type="password" placeholder="vc_live_..." class="bg-transparent text-emerald-300 focus:outline-none w-28 sm:w-36 mono">
+          <span class="text-slate-400 mr-2"><i class="fa-solid fa-key mr-1"></i>Voice API Key:</span>
+          <input id="inputApiKey" type="password" placeholder="vtts_worker_..." class="bg-transparent text-emerald-300 focus:outline-none w-28 sm:w-40 mono">
         </div>
         <button onclick="saveConnectionSettings()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/30 transition flex items-center space-x-1">
           <i class="fa-solid fa-link"></i>
@@ -58,9 +58,9 @@
       <div class="flex items-start space-x-2.5">
         <i class="fa-solid fa-triangle-exclamation text-amber-400 text-sm mt-0.5"></i>
         <div>
-          <span class="font-bold text-white">Trình duyệt đang chặn kết nối từ HTTPS về HTTP localhost (Private Network Access):</span>
+          <span class="font-bold text-white">Trình duyệt chặn kết nối HTTPS đến HTTP Voice Server (Private Network Access):</span>
           <p class="text-amber-300/90 mt-0.5 leading-relaxed">
-            Để kết nối thành công: Nhấp vào biểu tượng <strong>Cài đặt trang / Ổ khóa</strong> bên trái thanh URL -> Bật <strong>"Insecure content" (Nội dung không an toàn)</strong>, hoặc truy cập Web Demo trực tiếp từ server cục bộ tại <a href="http://localhost:8000/demo" target="_blank" class="underline font-bold text-white hover:text-amber-100">http://localhost:8000/demo</a>.
+            Để kết nối: Nhấp biểu tượng <strong>Cài đặt trang / Ổ khóa</strong> bên trái thanh URL -> Bật <strong>"Insecure content"</strong>, hoặc truy cập Web Studio từ localhost tại <a href="http://localhost:3000" target="_blank" class="underline font-bold text-white hover:text-amber-100">http://localhost:3000</a>.
           </p>
         </div>
       </div>
@@ -218,8 +218,19 @@
           <span class="text-xs text-slate-400">Bấm nút để bắt đầu hoặc kết thúc thu âm</span>
         </div>
 
-        <div id="recordedAudioContainer" class="hidden pt-4 border-t border-slate-800 space-y-3">
+        <div id="recordedAudioContainer" class="hidden pt-4 border-t border-slate-800 space-y-4">
           <audio id="recordedAudioPreview" controls class="w-full"></audio>
+          <div class="flex items-center justify-center gap-3">
+            <button id="btnExtractEmbedding" onclick="extractRecordedEmbedding()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/30 transition flex items-center space-x-1.5">
+              <i class="fa-solid fa-dna"></i>
+              <span>Trích Xuất Đặc Trưng Giọng (.npz)</span>
+            </button>
+            <button id="btnUseClonedVoice" onclick="useClonedVoiceForTts()" class="hidden px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md shadow-emerald-600/30 transition flex items-center space-x-1.5">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span>Sang TTS Thử Nghiệm Ngay</span>
+            </button>
+          </div>
+          <div id="embeddingStatusBadge" class="hidden text-xs text-emerald-400 font-medium"></div>
         </div>
       </div>
     </section>

@@ -23,3 +23,14 @@ def test_dockerfile_packaging():
     assert "EXPOSE 80" in content
     assert "HEALTHCHECK" in content
 
+def test_app_js_points_to_voice_server():
+    app_js_path = Path("VoiceClonerWebDemo/assets/app.js")
+    assert app_js_path.exists()
+    content = app_js_path.read_text(encoding="utf-8")
+    assert "8001" in content
+    assert "vtts_worker_secret_key_123" in content
+    assert "/internal/v1/synthesize" in content
+    assert "/internal/v1/voices" in content
+    assert "/internal/v1/embed" in content
+
+
