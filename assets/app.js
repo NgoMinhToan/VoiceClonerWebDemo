@@ -54,12 +54,14 @@ async function serverFetch(endpoint, options = {}) {
 async function checkConnection() {
   const badge = document.getElementById('connectionBadge');
   const statusText = document.getElementById('connectionStatusText');
+  const pnaBanner = document.getElementById('pnaNoticeBanner');
   try {
     statusText.textContent = 'Đang kiểm tra...';
     const res = await serverFetch('/health');
     if (res.ok) {
       badge.className = 'flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
       statusText.textContent = 'Đã kết nối Server';
+      if (pnaBanner) pnaBanner.classList.add('hidden');
       loadVoices();
     } else {
       throw new Error(`HTTP ${res.status}`);
@@ -67,6 +69,9 @@ async function checkConnection() {
   } catch (err) {
     badge.className = 'flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30';
     statusText.textContent = 'Mất kết nối Server';
+    if (window.location.protocol === 'https:' && (getServerUrl().includes('localhost') || getServerUrl().includes('127.0.0.1'))) {
+      if (pnaBanner) pnaBanner.classList.remove('hidden');
+    }
   }
 }
 

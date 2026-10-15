@@ -52,6 +52,29 @@
     </div>
   </header>
 
+  <!-- PNA / MIXED CONTENT WARNING BANNER (When HTTPS GitHub Pages accesses HTTP localhost) -->
+  <div id="pnaNoticeBanner" class="hidden bg-amber-500/10 border-b border-amber-500/30 px-4 py-3 text-xs text-amber-200">
+    <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      <div class="flex items-start space-x-2.5">
+        <i class="fa-solid fa-triangle-exclamation text-amber-400 text-sm mt-0.5"></i>
+        <div>
+          <span class="font-bold text-white">Trình duyệt đang chặn kết nối từ HTTPS về HTTP localhost (Private Network Access):</span>
+          <p class="text-amber-300/90 mt-0.5 leading-relaxed">
+            Để kết nối thành công: Nhấp vào biểu tượng <strong>Cài đặt trang / Ổ khóa</strong> bên trái thanh URL -> Bật <strong>"Insecure content" (Nội dung không an toàn)</strong>, hoặc truy cập Web Demo trực tiếp từ server cục bộ tại <a href="http://localhost:8000/demo" target="_blank" class="underline font-bold text-white hover:text-amber-100">http://localhost:8000/demo</a>.
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2 shrink-0">
+        <button onclick="checkConnection()" class="px-3 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-100 border border-amber-500/40 font-semibold">
+          Thử Lại
+        </button>
+        <button onclick="document.getElementById('pnaNoticeBanner').classList.add('hidden')" class="text-amber-400 hover:text-white px-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- NAVIGATION TABS -->
   <div class="border-b border-slate-800 bg-slate-900/40">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-8 overflow-x-auto">
