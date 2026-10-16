@@ -1,7 +1,9 @@
-name: Deploy Web Demo to GitHub Pages
+name: CI & Deploy Web Demo to GitHub Pages
 
 on:
   push:
+    branches: [ "main", "master", "refactor/**", "feature/**" ]
+  pull_request:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
@@ -15,7 +17,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test:
+    name: Run Web Demo Unit & Logic Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pytest
+        run: pip install pytest
+
+      - name: Run Pytest Suite
+        run: pytest tests/ -v
+
   deploy:
+    name: Deploy to GitHub Pages
+    needs: test
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.event_name == 'push'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
