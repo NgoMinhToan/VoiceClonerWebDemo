@@ -36,3 +36,6 @@
 - [x] Test workflow tự động deploy lên GitHub Pages (`deploy-pages.yml`).
 - [x] Test cấu trúc Dockerfile (`nginx:alpine` với cổng 80 và healthcheck wget).
 - [x] Test logic chuyển đổi 2 chế độ và hỗ trợ đầy đủ các endpoint.
+- [x] Test cấu trúc phần tử DOM: Chuyển đổi Mode buttons, Modal xác thực người dùng, Quota Bar, và bộ điều khiển âm thanh (`test_dom_modal_and_controls_structure`).
+- [x] Test các hàm xử lý JavaScript: `setTargetMode`, `saveConnectionSettings`, `submitAuthForm`, `logoutUser`, `updateVoiceCountDisplays`, `fillSampleText`, `synthesizeSpeech`, `saveCloneToAccount` (`test_js_client_logic_handlers`).
+- [x] Toàn bộ 6/6 test cases trong `VoiceClonerWebDemo/tests/` đều vượt qua 100%.
