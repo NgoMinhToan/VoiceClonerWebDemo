@@ -9,6 +9,8 @@ def test_web_demo_static_files():
     assert "App Server" in html
     assert "Dual-Mode" in html
     assert "Tổng Hợp Âm Thanh" in html
+    # Assert no hardcoded 23 voices in subtitle
+    assert "23 giọng" not in html
 
 
 def test_github_pages_workflow():
@@ -28,7 +30,7 @@ def test_dockerfile_packaging():
     assert "HEALTHCHECK" in content
 
 
-def test_app_js_dual_mode_support():
+def test_app_js_dual_mode_and_dynamic_discovery():
     app_js_path = Path("VoiceClonerWebDemo/assets/app.js")
     assert app_js_path.exists()
     content = app_js_path.read_text(encoding="utf-8")
@@ -42,3 +44,7 @@ def test_app_js_dual_mode_support():
     assert "/v1/auth/login" in content
     assert "/v1/auth/me" in content
     assert "/v1/voices/clone" in content
+    # Dynamic functions
+    assert "updateVoiceCountDisplays" in content
+    assert "fillSampleText" in content
+    assert "23 giọng" not in content

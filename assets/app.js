@@ -39,6 +39,37 @@ function setUserToken(token) {
   }
 }
 
+function updateVoiceCountDisplays(totalCount) {
+  const subtitle = document.getElementById('librarySubtitle');
+  const badge = document.getElementById('voiceCountBadge');
+  const count = typeof totalCount === 'number' ? totalCount : availableVoices.length;
+
+  if (badge) {
+    badge.textContent = `${count} giọng`;
+    badge.classList.remove('hidden');
+  }
+
+  if (subtitle) {
+    if (targetMode === 'voice') {
+      subtitle.textContent = `Danh mục ${count} giọng đọc AI bản ngữ sẵn sàng trên Voice Server.`;
+    } else {
+      const customCount = availableVoices.filter(v => !v.is_builtin).length;
+      const builtinCount = count - customCount;
+      subtitle.textContent = `Danh mục ${count} giọng đọc (${builtinCount} preset + ${customCount} clone) từ App Server.`;
+    }
+  }
+}
+
+function fillSampleText() {
+  const sel = document.getElementById('selectVoice');
+  const voiceId = sel ? sel.value : null;
+  const voiceObj = availableVoices.find(v => (v.id === voiceId || v.name === voiceId));
+  const text = (voiceObj && voiceObj.sample_text)
+    ? voiceObj.sample_text
+    : "Chào bạn! Đây là đoạn văn bản mẫu kiểm tra chất lượng tổng hợp giọng nói AI chuẩn 48kHz.";
+  document.getElementById('inputTtsText').value = text;
+}
+
 function setTargetMode(mode) {
   targetMode = mode;
   localStorage.setItem('vc_target_mode', mode);
@@ -48,7 +79,6 @@ function setTargetMode(mode) {
   const userAccountSection = document.getElementById('userAccountSection');
   const voiceModeActions = document.getElementById('voiceModeActions');
   const appModeActions = document.getElementById('appModeActions');
-  const librarySubtitle = document.getElementById('librarySubtitle');
 
   if (mode === 'voice') {
     btnVoice.className = 'px-2.5 py-1 rounded-md font-semibold transition bg-indigo-600 text-white flex items-center space-x-1';
@@ -57,16 +87,15 @@ function setTargetMode(mode) {
     document.getElementById('userQuotaBar').classList.add('hidden');
     voiceModeActions.classList.remove('hidden');
     appModeActions.classList.add('hidden');
-    librarySubtitle.textContent = 'Danh mục 23 giọng đọc AI bản ngữ Việt Nam chuẩn 48kHz từ Voice Server.';
   } else {
     btnApp.className = 'px-2.5 py-1 rounded-md font-semibold transition bg-indigo-600 text-white flex items-center space-x-1';
     btnVoice.className = 'px-2.5 py-1 rounded-md font-semibold transition text-slate-400 hover:text-white flex items-center space-x-1';
     userAccountSection.classList.remove('hidden');
     voiceModeActions.classList.add('hidden');
     appModeActions.classList.remove('hidden');
-    librarySubtitle.textContent = 'Danh mục 23 giọng preset + giọng clone của tài khoản trên App Server.';
   }
 
+  updateVoiceCountDisplays(availableVoices.length);
   document.getElementById('inputServerUrl').value = getServerUrl();
   document.getElementById('inputApiKey').value = getApiKey();
   checkConnection();
@@ -130,8 +159,9 @@ async function checkConnection() {
 
     if (res.ok) {
       const data = await res.json();
+      const count = data.total_voices ?? availableVoices.length;
       badge.className = 'flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
-      statusText.textContent = targetMode === 'voice' ? `Voice Server (${data.total_voices || 23} giọng)` : 'App Server Online';
+      statusText.textContent = targetMode === 'voice' ? `Voice Server (${count} giọng)` : 'App Server Online';
       if (pnaBanner) pnaBanner.classList.add('hidden');
 
       if (targetMode === 'app' && getUserToken()) {
@@ -273,6 +303,7 @@ async function loadVoices() {
       const data = await res.json();
       availableVoices = data.voices || data.data || (Array.isArray(data) ? data : []);
       populateVoiceSelect();
+      updateVoiceCountDisplays(availableVoices.length);
       if (currentTab === 'library') renderLibrary();
     }
   } catch (e) {
@@ -289,10 +320,15 @@ function populateVoiceSelect() {
     optionsHtml += `<option value="__cloned_voice__" selected>🌟 [Giọng Clone Tức Thì .npz]</option>`;
   }
 
-  optionsHtml += availableVoices.map(v => {
-    const prefix = !v.is_builtin ? '⭐ [Clone] ' : '';
-    return `<option value="${v.id || v.name}">${prefix}${v.name} (${v.accent || v.gender || '48kHz'})</option>`;
-  }).join('');
+  if (!availableVoices.length) {
+    optionsHtml += `<option value="" disabled selected>Chưa nạp được danh mục giọng...</option>`;
+  } else {
+    optionsHtml += availableVoices.map((v, idx) => {
+      const prefix = !v.is_builtin ? '⭐ [Clone] ' : '';
+      const selected = idx === 0 && !currentClonedNpzBase64 ? 'selected' : '';
+      return `<option value="${v.id || v.name}" ${selected}>${prefix}${v.name} (${v.accent || v.gender || 'Chuẩn'})</option>`;
+    }).join('');
+  }
 
   sel.innerHTML = optionsHtml;
 }
@@ -313,7 +349,7 @@ async function synthesizeSpeech() {
 
   const btn = document.getElementById('btnSynthesize');
   btn.disabled = true;
-  btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Đang tổng hợp 48kHz WAV...`;
+  btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin mr-2"></i> Đang tổng hợp âm thanh...`;
 
   const payload = {
     text,
@@ -348,7 +384,7 @@ async function synthesizeSpeech() {
     const audioBlob = await res.blob();
     const audioUrl = URL.createObjectURL(audioBlob);
     playGeneratedAudio(audioUrl);
-    showToast('Tổng hợp âm thanh 48kHz thành công!', 'success');
+    showToast('Tổng hợp âm thanh thành công!', 'success');
     if (targetMode === 'app' && currentUser) {
       fetchUserProfile();
     }
@@ -377,12 +413,17 @@ async function previewVoice(voiceId) {
   try {
     showToast('Đang phát bản nghe thử...', 'info');
     let res;
+    const voiceObj = availableVoices.find(v => (v.id === voiceId || v.name === voiceId));
+    const sampleText = (voiceObj && voiceObj.sample_text)
+      ? voiceObj.sample_text
+      : "Chào bạn! Đây là bản nghe thử được kết xuất trực tiếp bằng công nghệ AI Neural chuẩn 48kHz.";
+
     if (targetMode === 'voice') {
       res = await serverFetch('/internal/v1/synthesize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: "Xin chào! Đây là bản nghe thử được kết xuất trực tiếp bằng công nghệ AI VieNeu-TTS 48kHz.",
+          text: sampleText,
           voice: voiceId,
           voice_id: voiceId,
           format: "wav"
@@ -392,7 +433,7 @@ async function previewVoice(voiceId) {
       res = await serverFetch('/v1/voices/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voice_id: voiceId })
+        body: JSON.stringify({ voice_id: voiceId, text: sampleText })
       });
     }
 
@@ -459,9 +500,9 @@ function renderLibrary() {
             </button>
           ` : ''}
         </div>
-        <p class="text-xs text-slate-400 italic">"${v.description || v.sample_text || 'Giọng đọc chuẩn AI VieNeu-TTS 48kHz'}"</p>
+        <p class="text-xs text-slate-400 italic">"${v.description || v.sample_text || 'Giọng đọc AI tiêu chuẩn'}"</p>
         <div class="flex items-center justify-between pt-2 border-t border-slate-800">
-          <span class="text-[10px] text-indigo-300 font-semibold px-2 py-0.5 rounded bg-indigo-500/10">48kHz HQ</span>
+          <span class="text-[10px] text-indigo-300 font-semibold px-2 py-0.5 rounded bg-indigo-500/10">${v.spec || '48kHz HQ'}</span>
           <button onclick="previewVoice('${v.id || v.name}')" class="px-3 py-1 text-xs font-semibold rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 transition flex items-center space-x-1">
             <i class="fa-solid fa-play text-[10px]"></i>
             <span>Nghe thử 3s</span>
