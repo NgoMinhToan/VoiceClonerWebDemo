@@ -52,4 +52,19 @@ Mở file `index.html` bằng bất kỳ trình duyệt hiện đại nào (Chro
 ---
 
 ## 4. Tự Động Deploy Lên GitHub Pages
-Repository tích hợp sẵn GitHub Actions workflow `.github/workflows/deploy-pages.yml`. Mỗi khi push commit lên nhánh `master` hoặc `main`, website sẽ tự động cập nhật lên GitHub Pages trong vòng 1 phút.
+Repository tích hợp sẵn GitHub Actions workflow `.github/workflows/deploy-pages.yml`. Mỗi khi push commit lên nhánh `master` hoặc `main`, workflow sẽ chạy toàn bộ test trước, và tự động deploy website lên GitHub Pages nếu tests pass.
+
+---
+
+## 5. Kiểm Thử Hệ Thống
+
+Chạy bộ kiểm thử tự động pytest:
+```bash
+pytest tests/ -v
+```
+
+### Kích Hoạt Git Pre-Push Hook Cục Bộ:
+Để git tự động chạy kiểm thử trước mỗi lần push:
+```bash
+git config core.hooksPath .githooks
+```
