@@ -22,9 +22,11 @@ function getServerUrl() {
 
 function getApiKey() {
   if (targetMode === 'voice') {
-    return localStorage.getItem('vc_voice_api_key') || 'vtts_worker_secret_key_123';
+    const val = localStorage.getItem('vc_voice_api_key');
+    return val !== null ? val : 'vtts_worker_secret_key_123';
   }
-  return localStorage.getItem('vc_client_api_key') || 'vc_live_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6';
+  const val = localStorage.getItem('vc_client_api_key');
+  return val !== null ? val : 'vc_live_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6';
 }
 
 function getUserToken() {
@@ -107,10 +109,10 @@ function saveConnectionSettings() {
 
   if (targetMode === 'voice') {
     localStorage.setItem('vc_voice_server_url', url || 'http://localhost:8001');
-    localStorage.setItem('vc_voice_api_key', key || 'vtts_worker_secret_key_123');
+    localStorage.setItem('vc_voice_api_key', key);
   } else {
     localStorage.setItem('vc_app_server_url', url || 'http://localhost:8000');
-    localStorage.setItem('vc_client_api_key', key || 'vc_live_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6');
+    localStorage.setItem('vc_client_api_key', key);
   }
 
   showToast('Đã lưu thông tin cấu hình kết nối!', 'success');

@@ -13,7 +13,7 @@
   - Sử dụng hàm `fillSampleText()` đọc trực tiếp `sample_text` từ đối tượng giọng nói được server cung cấp.
   - Loại bỏ các thẻ `<option>` tĩnh trong `<select id="selectVoice">`, tạo động hoàn toàn khi nạp API.
   - Bổ sung bộ chuyển chế độ (Mode Toggle Pill) trên Header: "1. Voice Server (8001)" và "2. App Server (8000)".
-  - Tách biệt cấu hình `Server URL` và `Key` độc lập theo từng chế độ trong `localStorage`.
+  - Tách biệt cấu hình `Server URL` và `Key` độc lập theo từng chế độ trong `localStorage`, bảo toàn giá trị rỗng khi người dùng xóa key để kiểm thử bảo mật API Gateway.
   - Tích hợp Modal đăng nhập/đăng ký tài khoản App Server (`/v1/auth/login`, `/v1/auth/register`) và hiển thị thanh User Quota Bar.
 
 ---
