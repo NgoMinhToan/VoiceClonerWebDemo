@@ -25,11 +25,14 @@ function debounce(fn, delay = 400) {
 // Config getters reading directly from DOM (no credentials stored in localStorage)
 function getServerUrl() {
   const el = document.getElementById('inputServerUrl');
-  const val = el ? el.value.trim() : '';
-  if (val) {
-    return val.replace(/\/+$/, '');
+  let val = el ? el.value.trim() : '';
+  if (!val) {
+    return '';
   }
-  return targetMode === 'voice' ? 'http://localhost:8001' : 'http://localhost:8000';
+  if (!/^https?:\/\//i.test(val)) {
+    val = 'http://' + val;
+  }
+  return val.replace(/\/+$/, '');
 }
 
 function getApiKey() {
@@ -58,12 +61,17 @@ function initConnectionListeners() {
   const inputServerUrl = document.getElementById('inputServerUrl');
   const inputApiKey = document.getElementById('inputApiKey');
 
+  const onInputEvent = () => {
+    updateConnectionBadge('checking', 'Đang kiểm tra...');
+    handleConnectionChange();
+  };
+
   if (inputServerUrl) {
-    inputServerUrl.addEventListener('input', handleConnectionChange);
+    inputServerUrl.addEventListener('input', onInputEvent);
     inputServerUrl.addEventListener('change', handleConnectionChange);
   }
   if (inputApiKey) {
-    inputApiKey.addEventListener('input', handleConnectionChange);
+    inputApiKey.addEventListener('input', onInputEvent);
     inputApiKey.addEventListener('change', handleConnectionChange);
   }
 }
@@ -222,43 +230,83 @@ async function checkConnection() {
 
   const isStale = () => currentSeq !== connectionCheckSeq || getServerUrl() !== expectedUrl || getApiKey() !== expectedKey;
 
-  // If either URL or API Key is empty
-  if (!expectedUrl || !expectedKey) {
-    updateConnectionBadge('neutral', 'Chưa nhập API Key');
+  if (!expectedUrl && !expectedKey) {
+    updateConnectionBadge('neutral', 'Chưa nhập thông tin');
     resetVoiceCatalog('Vui lòng nhập URL và API Key...');
+    return;
+  }
+
+  if (!expectedUrl) {
+    updateConnectionBadge('neutral', 'Chưa nhập URL');
+    resetVoiceCatalog('Vui lòng nhập URL Server...');
+    return;
+  }
+
+  if (!expectedKey) {
+    updateConnectionBadge('neutral', 'Chưa nhập API Key');
+    resetVoiceCatalog('Vui lòng nhập API Key...');
+    return;
+  }
+
+  try {
+    new URL(expectedUrl);
+  } catch (e) {
+    updateConnectionBadge('neutral', 'URL không hợp lệ');
+    resetVoiceCatalog('Vui lòng nhập URL hợp lệ...');
     return;
   }
 
   updateConnectionBadge('checking', 'Đang kiểm tra...');
 
-  // Step 1: Health check
+  // Step 1: Health check & service discovery
+  let detectedService = null;
   try {
     const healthEndpoint = targetMode === 'voice' ? '/internal/v1/health' : '/health';
     let healthRes;
     try {
       healthRes = await serverFetch(healthEndpoint);
       if (isStale()) return;
-      if (!healthRes.ok && targetMode === 'voice') {
-        healthRes = await serverFetch('/health');
+      if (!healthRes.ok) {
+        const altEndpoint = healthEndpoint === '/health' ? '/internal/v1/health' : '/health';
+        const altRes = await serverFetch(altEndpoint);
         if (isStale()) return;
+        if (altRes.ok) {
+          healthRes = altRes;
+        }
       }
     } catch (netErr) {
-      if (isStale()) return;
-      updateConnectionBadge('error', 'Mất kết nối Server');
-      resetVoiceCatalog('Mất kết nối Server...');
-      if (pnaBanner && window.location.protocol === 'https:' && (expectedUrl.includes('localhost') || expectedUrl.includes('127.0.0.1'))) {
-        pnaBanner.classList.remove('hidden');
+      if (healthEndpoint !== '/health') {
+        try {
+          const fallbackRes = await serverFetch('/health');
+          if (isStale()) return;
+          if (fallbackRes.ok) {
+            healthRes = fallbackRes;
+          }
+        } catch (e2) {}
       }
-      return;
+
+      if (!healthRes) {
+        if (isStale()) return;
+        updateConnectionBadge('error', 'Mất kết nối Server');
+        resetVoiceCatalog('Mất kết nối Server...');
+        if (pnaBanner && window.location.protocol === 'https:' && (expectedUrl.includes('localhost') || expectedUrl.includes('127.0.0.1'))) {
+          pnaBanner.classList.remove('hidden');
+        }
+        return;
+      }
     }
 
     if (isStale()) return;
 
-    if (!healthRes.ok) {
+    if (!healthRes || !healthRes.ok) {
       updateConnectionBadge('error', 'Mất kết nối Server');
       resetVoiceCatalog('Mất kết nối Server...');
       return;
     }
+
+    const healthData = await healthRes.json().catch(() => ({}));
+    if (isStale()) return;
+    detectedService = healthData.service;
   } catch (e) {
     if (isStale()) return;
     updateConnectionBadge('error', 'Mất kết nối Server');
@@ -268,12 +316,24 @@ async function checkConnection() {
 
   // Step 2: Auth check via voices catalog endpoint
   try {
-    const voiceEndpoint = targetMode === 'voice' ? '/internal/v1/voices' : '/v1/voices';
+    let voiceEndpoint;
+    if (detectedService === 'VoiceClonerAppServer') {
+      voiceEndpoint = '/v1/voices';
+    } else if (detectedService === 'vienueTTS_server') {
+      voiceEndpoint = '/internal/v1/voices';
+    } else {
+      voiceEndpoint = targetMode === 'voice' ? '/internal/v1/voices' : '/v1/voices';
+    }
+
     let voiceRes = await serverFetch(voiceEndpoint);
     if (isStale()) return;
-    if (!voiceRes.ok && targetMode === 'voice') {
-      voiceRes = await serverFetch('/v1/voices');
+    if (!voiceRes.ok && (voiceRes.status === 404 || voiceRes.status === 405)) {
+      const altVoiceEndpoint = voiceEndpoint === '/v1/voices' ? '/internal/v1/voices' : '/v1/voices';
+      const altRes = await serverFetch(altVoiceEndpoint);
       if (isStale()) return;
+      if (altRes.ok || altRes.status === 401 || altRes.status === 403) {
+        voiceRes = altRes;
+      }
     }
 
     if (voiceRes.status === 401 || voiceRes.status === 403) {
@@ -296,7 +356,8 @@ async function checkConnection() {
     availableVoices = data.voices || data.data || (Array.isArray(data) ? data : []);
     const count = data.total_voices ?? availableVoices.length;
 
-    const statusMsg = targetMode === 'voice' ? `Voice Server (${count} giọng)` : 'App Server Online';
+    const isApp = detectedService === 'VoiceClonerAppServer' || targetMode === 'app';
+    const statusMsg = !isApp ? `Voice Server (${count} giọng)` : 'App Server Online';
     updateConnectionBadge('success', statusMsg);
     if (pnaBanner) pnaBanner.classList.add('hidden');
 
@@ -304,7 +365,7 @@ async function checkConnection() {
     updateVoiceCountDisplays(availableVoices.length);
     if (currentTab === 'library') renderLibrary();
 
-    if (targetMode === 'app' && getUserToken()) {
+    if (isApp && getUserToken()) {
       fetchUserProfile();
     }
   } catch (err) {
