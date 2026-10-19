@@ -1,8 +1,24 @@
 from pathlib import Path
 
 
+def get_project_file(rel_path: str) -> Path:
+    clean_path = rel_path
+    if clean_path.startswith("VoiceClonerWebDemo/") or clean_path.startswith("VoiceClonerWebDemo\\"):
+        clean_path = clean_path[len("VoiceClonerWebDemo/"):]
+
+    candidates = [
+        Path("VoiceClonerWebDemo") / clean_path,
+        Path(clean_path),
+        Path(__file__).resolve().parent.parent / clean_path,
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return Path("VoiceClonerWebDemo") / clean_path
+
+
 def test_dom_modal_and_controls_structure():
-    html_path = Path("VoiceClonerWebDemo/index.html")
+    html_path = get_project_file("index.html")
     assert html_path.exists()
     content = html_path.read_text(encoding="utf-8")
 
@@ -32,7 +48,7 @@ def test_dom_modal_and_controls_structure():
 
 
 def test_js_client_logic_handlers():
-    js_path = Path("VoiceClonerWebDemo/assets/app.js")
+    js_path = get_project_file("assets/app.js")
     assert js_path.exists()
     content = js_path.read_text(encoding="utf-8")
 

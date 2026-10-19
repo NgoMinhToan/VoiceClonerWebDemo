@@ -1,8 +1,24 @@
 from pathlib import Path
 
 
+def get_project_file(rel_path: str) -> Path:
+    clean_path = rel_path
+    if clean_path.startswith("VoiceClonerWebDemo/") or clean_path.startswith("VoiceClonerWebDemo\\"):
+        clean_path = clean_path[len("VoiceClonerWebDemo/"):]
+
+    candidates = [
+        Path("VoiceClonerWebDemo") / clean_path,
+        Path(clean_path),
+        Path(__file__).resolve().parent.parent / clean_path,
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return Path("VoiceClonerWebDemo") / clean_path
+
+
 def test_web_demo_static_files():
-    html_path = Path("VoiceClonerWebDemo/index.html")
+    html_path = get_project_file("index.html")
     assert html_path.exists()
     html = html_path.read_text(encoding="utf-8")
     assert "Voice Server" in html
@@ -14,7 +30,7 @@ def test_web_demo_static_files():
 
 
 def test_github_pages_workflow():
-    workflow_path = Path("VoiceClonerWebDemo/.github/workflows/deploy-pages.yml")
+    workflow_path = get_project_file(".github/workflows/deploy-pages.yml")
     assert workflow_path.exists()
     content = workflow_path.read_text(encoding="utf-8")
     assert "actions/deploy-pages" in content
@@ -22,7 +38,7 @@ def test_github_pages_workflow():
 
 
 def test_dockerfile_packaging():
-    dockerfile_path = Path("VoiceClonerWebDemo/Dockerfile")
+    dockerfile_path = get_project_file("Dockerfile")
     assert dockerfile_path.exists()
     content = dockerfile_path.read_text(encoding="utf-8")
     assert "nginx:alpine" in content
@@ -31,7 +47,7 @@ def test_dockerfile_packaging():
 
 
 def test_app_js_dual_mode_and_dynamic_discovery():
-    app_js_path = Path("VoiceClonerWebDemo/assets/app.js")
+    app_js_path = get_project_file("assets/app.js")
     assert app_js_path.exists()
     content = app_js_path.read_text(encoding="utf-8")
     # Mode 1: Voice Server
