@@ -11,6 +11,7 @@ let recordingTimer = null;
 let recordingSeconds = 0;
 let mediaRecorder = null;
 let currentClonedNpzBase64 = null;
+let connectionCheckSeq = 0;
 
 // Debounce helper for reactive user input
 function debounce(fn, delay = 400) {
@@ -88,6 +89,16 @@ function updateVoiceCountDisplays(totalCount) {
   }
 }
 
+function resetVoiceCatalog(placeholderMsg = 'Chưa nạp được danh mục giọng...') {
+  availableVoices = [];
+  const sel = document.getElementById('selectVoice');
+  if (sel) {
+    sel.innerHTML = `<option value="" disabled selected>${placeholderMsg}</option>`;
+  }
+  updateVoiceCountDisplays(0);
+  if (currentTab === 'library') renderLibrary();
+}
+
 function fillSampleText() {
   const sel = document.getElementById('selectVoice');
   const voiceId = sel ? sel.value : null;
@@ -138,8 +149,7 @@ function setTargetMode(mode) {
     inputApiKey.value = '';
   }
 
-  availableVoices = [];
-  updateVoiceCountDisplays(0);
+  resetVoiceCatalog();
   checkConnection();
 }
 
@@ -205,20 +215,17 @@ function updateConnectionBadge(state, text) {
 }
 
 async function checkConnection() {
-  const url = getServerUrl();
-  const key = getApiKey();
-  const selectVoice = document.getElementById('selectVoice');
+  const currentSeq = ++connectionCheckSeq;
+  const expectedUrl = getServerUrl();
+  const expectedKey = getApiKey();
   const pnaBanner = document.getElementById('pnaNoticeBanner');
 
+  const isStale = () => currentSeq !== connectionCheckSeq || getServerUrl() !== expectedUrl || getApiKey() !== expectedKey;
+
   // If either URL or API Key is empty
-  if (!url || !key) {
+  if (!expectedUrl || !expectedKey) {
     updateConnectionBadge('neutral', 'Chưa nhập API Key');
-    if (selectVoice) {
-      selectVoice.innerHTML = '<option value="" disabled selected>Vui lòng nhập URL và API Key...</option>';
-    }
-    availableVoices = [];
-    updateVoiceCountDisplays(0);
-    if (currentTab === 'library') renderLibrary();
+    resetVoiceCatalog('Vui lòng nhập URL và API Key...');
     return;
   }
 
@@ -230,35 +237,32 @@ async function checkConnection() {
     let healthRes;
     try {
       healthRes = await serverFetch(healthEndpoint);
+      if (isStale()) return;
       if (!healthRes.ok && targetMode === 'voice') {
         healthRes = await serverFetch('/health');
+        if (isStale()) return;
       }
     } catch (netErr) {
+      if (isStale()) return;
       updateConnectionBadge('error', 'Mất kết nối Server');
-      if (selectVoice) {
-        selectVoice.innerHTML = '<option value="" disabled selected>Mất kết nối Server...</option>';
-      }
-      availableVoices = [];
-      updateVoiceCountDisplays(0);
-      if (currentTab === 'library') renderLibrary();
-      if (pnaBanner && window.location.protocol === 'https:' && (url.includes('localhost') || url.includes('127.0.0.1'))) {
+      resetVoiceCatalog('Mất kết nối Server...');
+      if (pnaBanner && window.location.protocol === 'https:' && (expectedUrl.includes('localhost') || expectedUrl.includes('127.0.0.1'))) {
         pnaBanner.classList.remove('hidden');
       }
       return;
     }
 
+    if (isStale()) return;
+
     if (!healthRes.ok) {
       updateConnectionBadge('error', 'Mất kết nối Server');
-      if (selectVoice) {
-        selectVoice.innerHTML = '<option value="" disabled selected>Mất kết nối Server...</option>';
-      }
-      availableVoices = [];
-      updateVoiceCountDisplays(0);
-      if (currentTab === 'library') renderLibrary();
+      resetVoiceCatalog('Mất kết nối Server...');
       return;
     }
   } catch (e) {
+    if (isStale()) return;
     updateConnectionBadge('error', 'Mất kết nối Server');
+    resetVoiceCatalog('Mất kết nối Server...');
     return;
   }
 
@@ -266,27 +270,29 @@ async function checkConnection() {
   try {
     const voiceEndpoint = targetMode === 'voice' ? '/internal/v1/voices' : '/v1/voices';
     let voiceRes = await serverFetch(voiceEndpoint);
+    if (isStale()) return;
     if (!voiceRes.ok && targetMode === 'voice') {
       voiceRes = await serverFetch('/v1/voices');
+      if (isStale()) return;
     }
 
     if (voiceRes.status === 401 || voiceRes.status === 403) {
+      if (isStale()) return;
       updateConnectionBadge('auth-error', `Sai API Key (${voiceRes.status})`);
-      if (selectVoice) {
-        selectVoice.innerHTML = '<option value="" disabled selected>API Key không hợp lệ</option>';
-      }
-      availableVoices = [];
-      updateVoiceCountDisplays(0);
-      if (currentTab === 'library') renderLibrary();
+      resetVoiceCatalog('API Key không hợp lệ');
       return;
     }
 
     if (!voiceRes.ok) {
+      if (isStale()) return;
       updateConnectionBadge('error', `Lỗi HTTP ${voiceRes.status}`);
+      resetVoiceCatalog(`Lỗi HTTP ${voiceRes.status}`);
       return;
     }
 
     const data = await voiceRes.json();
+    if (isStale()) return;
+
     availableVoices = data.voices || data.data || (Array.isArray(data) ? data : []);
     const count = data.total_voices ?? availableVoices.length;
 
@@ -302,13 +308,9 @@ async function checkConnection() {
       fetchUserProfile();
     }
   } catch (err) {
+    if (isStale()) return;
     updateConnectionBadge('error', 'Mất kết nối Server');
-    if (selectVoice) {
-      selectVoice.innerHTML = '<option value="" disabled selected>Mất kết nối Server...</option>';
-    }
-    availableVoices = [];
-    updateVoiceCountDisplays(0);
-    if (currentTab === 'library') renderLibrary();
+    resetVoiceCatalog('Mất kết nối Server...');
   }
 }
 
