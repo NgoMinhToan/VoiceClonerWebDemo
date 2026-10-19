@@ -26,6 +26,17 @@ def test_dom_modal_and_controls_structure():
     assert 'id="modeBtnVoice"' in content
     assert 'id="modeBtnApp"' in content
 
+    # Reactive connection inputs in header
+    assert 'id="inputServerUrl"' in content
+    assert 'id="inputApiKey"' in content
+    assert 'id="connectionBadge"' in content
+    assert 'id="connectionStatusText"' in content
+
+    # Ensure manual connect button is removed from header
+    assert 'onclick="saveConnectionSettings()"' not in content
+    assert "<span>Kết Nối</span>" not in content
+    assert "Kết Nối" not in content
+
     # User Auth Modal and Inputs
     assert 'id="modalUserAuth"' in content
     assert 'id="inputEmail"' in content
