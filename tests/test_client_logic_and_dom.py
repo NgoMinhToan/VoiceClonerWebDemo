@@ -65,7 +65,8 @@ def test_js_client_logic_handlers():
 
     # Check state and handlers
     assert "function setTargetMode(" in content
-    assert "function saveConnectionSettings(" in content
+    assert "debounce" in content
+    assert "handleConnectionChange" in content
     assert "function submitAuthForm(" in content
     assert "function logoutUser(" in content
     assert "function fetchUserProfile(" in content

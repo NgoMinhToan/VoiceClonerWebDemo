@@ -52,7 +52,6 @@ def test_app_js_dual_mode_and_dynamic_discovery():
     content = app_js_path.read_text(encoding="utf-8")
     # Mode 1: Voice Server
     assert "8001" in content
-    assert "vtts_worker_secret_key_123" in content
     assert "/internal/v1/synthesize" in content
     assert "/internal/v1/embed" in content
     # Mode 2: App Server Gateway
@@ -60,7 +59,14 @@ def test_app_js_dual_mode_and_dynamic_discovery():
     assert "/v1/auth/login" in content
     assert "/v1/auth/me" in content
     assert "/v1/voices/clone" in content
-    # Dynamic functions
+    # Dynamic functions & reactive connection
     assert "updateVoiceCountDisplays" in content
     assert "fillSampleText" in content
+    assert "debounce" in content
     assert "23 giọng" not in content
+
+    # Security & reactive credentials: No default keys or credential localStorage
+    assert "vtts_worker_secret_key_123" not in content
+    assert "vc_live_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6" not in content
+    assert "vc_voice_api_key" not in content
+    assert "vc_client_api_key" not in content

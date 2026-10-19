@@ -12,21 +12,28 @@ let recordingSeconds = 0;
 let mediaRecorder = null;
 let currentClonedNpzBase64 = null;
 
-// Config getters/setters per mode
+// Debounce helper for reactive user input
+function debounce(fn, delay = 400) {
+  let timer = null;
+  return function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
+// Config getters reading directly from DOM (no credentials stored in localStorage)
 function getServerUrl() {
-  if (targetMode === 'voice') {
-    return localStorage.getItem('vc_voice_server_url') || 'http://localhost:8001';
+  const el = document.getElementById('inputServerUrl');
+  const val = el ? el.value.trim() : '';
+  if (val) {
+    return val.replace(/\/+$/, '');
   }
-  return localStorage.getItem('vc_app_server_url') || 'http://localhost:8000';
+  return targetMode === 'voice' ? 'http://localhost:8001' : 'http://localhost:8000';
 }
 
 function getApiKey() {
-  if (targetMode === 'voice') {
-    const val = localStorage.getItem('vc_voice_api_key');
-    return val !== null ? val : 'vtts_worker_secret_key_123';
-  }
-  const val = localStorage.getItem('vc_client_api_key');
-  return val !== null ? val : 'vc_live_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6';
+  const el = document.getElementById('inputApiKey');
+  return el ? el.value.trim() : '';
 }
 
 function getUserToken() {
@@ -38,6 +45,25 @@ function setUserToken(token) {
     localStorage.setItem('vc_user_access_token', token);
   } else {
     localStorage.removeItem('vc_user_access_token');
+  }
+}
+
+// Reactive connection change handler
+const handleConnectionChange = debounce(() => {
+  checkConnection();
+}, 400);
+
+function initConnectionListeners() {
+  const inputServerUrl = document.getElementById('inputServerUrl');
+  const inputApiKey = document.getElementById('inputApiKey');
+
+  if (inputServerUrl) {
+    inputServerUrl.addEventListener('input', handleConnectionChange);
+    inputServerUrl.addEventListener('change', handleConnectionChange);
+  }
+  if (inputApiKey) {
+    inputApiKey.addEventListener('input', handleConnectionChange);
+    inputApiKey.addEventListener('change', handleConnectionChange);
   }
 }
 
@@ -97,25 +123,23 @@ function setTargetMode(mode) {
     appModeActions.classList.remove('hidden');
   }
 
-  updateVoiceCountDisplays(availableVoices.length);
-  document.getElementById('inputServerUrl').value = getServerUrl();
-  document.getElementById('inputApiKey').value = getApiKey();
-  checkConnection();
-}
+  const defaultUrl = mode === 'voice' ? 'http://localhost:8001' : 'http://localhost:8000';
+  const inputServerUrl = document.getElementById('inputServerUrl');
+  const inputApiKey = document.getElementById('inputApiKey');
 
-function saveConnectionSettings() {
-  const url = document.getElementById('inputServerUrl').value.trim().replace(/\/+$/, '');
-  const key = document.getElementById('inputApiKey').value.trim();
-
-  if (targetMode === 'voice') {
-    localStorage.setItem('vc_voice_server_url', url || 'http://localhost:8001');
-    localStorage.setItem('vc_voice_api_key', key);
-  } else {
-    localStorage.setItem('vc_app_server_url', url || 'http://localhost:8000');
-    localStorage.setItem('vc_client_api_key', key);
+  if (inputServerUrl) {
+    inputServerUrl.placeholder = defaultUrl;
+    if (!inputServerUrl.value || inputServerUrl.value === 'http://localhost:8001' || inputServerUrl.value === 'http://localhost:8000') {
+      inputServerUrl.value = defaultUrl;
+    }
   }
 
-  showToast('Đã lưu thông tin cấu hình kết nối!', 'success');
+  if (inputApiKey) {
+    inputApiKey.value = '';
+  }
+
+  availableVoices = [];
+  updateVoiceCountDisplays(0);
   checkConnection();
 }
 
@@ -148,37 +172,143 @@ async function serverFetch(endpoint, options = {}) {
   return fetch(`${base}${endpoint}`, { ...options, headers });
 }
 
-async function checkConnection() {
+function updateConnectionBadge(state, text) {
   const badge = document.getElementById('connectionBadge');
   const statusText = document.getElementById('connectionStatusText');
+  const dot = badge ? badge.querySelector('span:first-child') : null;
+
+  if (statusText) statusText.textContent = text;
+  if (!badge) return;
+
+  switch (state) {
+    case 'neutral':
+      badge.className = 'flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700';
+      if (dot) dot.className = 'w-2 h-2 rounded-full bg-slate-500';
+      break;
+    case 'checking':
+      badge.className = 'flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/30';
+      if (dot) dot.className = 'w-2 h-2 rounded-full bg-indigo-400 animate-pulse';
+      break;
+    case 'error':
+      badge.className = 'flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30';
+      if (dot) dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+      break;
+    case 'auth-error':
+      badge.className = 'flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/30';
+      if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-400';
+      break;
+    case 'success':
+      badge.className = 'flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
+      if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+      break;
+  }
+}
+
+async function checkConnection() {
+  const url = getServerUrl();
+  const key = getApiKey();
+  const selectVoice = document.getElementById('selectVoice');
   const pnaBanner = document.getElementById('pnaNoticeBanner');
+
+  // If either URL or API Key is empty
+  if (!url || !key) {
+    updateConnectionBadge('neutral', 'Chưa nhập API Key');
+    if (selectVoice) {
+      selectVoice.innerHTML = '<option value="" disabled selected>Vui lòng nhập URL và API Key...</option>';
+    }
+    availableVoices = [];
+    updateVoiceCountDisplays(0);
+    if (currentTab === 'library') renderLibrary();
+    return;
+  }
+
+  updateConnectionBadge('checking', 'Đang kiểm tra...');
+
+  // Step 1: Health check
   try {
-    statusText.textContent = 'Đang kiểm tra...';
-    let res = await serverFetch(targetMode === 'voice' ? '/internal/v1/health' : '/health');
-    if (!res.ok) {
-      res = await serverFetch('/health');
+    const healthEndpoint = targetMode === 'voice' ? '/internal/v1/health' : '/health';
+    let healthRes;
+    try {
+      healthRes = await serverFetch(healthEndpoint);
+      if (!healthRes.ok && targetMode === 'voice') {
+        healthRes = await serverFetch('/health');
+      }
+    } catch (netErr) {
+      updateConnectionBadge('error', 'Mất kết nối Server');
+      if (selectVoice) {
+        selectVoice.innerHTML = '<option value="" disabled selected>Mất kết nối Server...</option>';
+      }
+      availableVoices = [];
+      updateVoiceCountDisplays(0);
+      if (currentTab === 'library') renderLibrary();
+      if (pnaBanner && window.location.protocol === 'https:' && (url.includes('localhost') || url.includes('127.0.0.1'))) {
+        pnaBanner.classList.remove('hidden');
+      }
+      return;
     }
 
-    if (res.ok) {
-      const data = await res.json();
-      const count = data.total_voices ?? availableVoices.length;
-      badge.className = 'flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30';
-      statusText.textContent = targetMode === 'voice' ? `Voice Server (${count} giọng)` : 'App Server Online';
-      if (pnaBanner) pnaBanner.classList.add('hidden');
-
-      if (targetMode === 'app' && getUserToken()) {
-        fetchUserProfile();
+    if (!healthRes.ok) {
+      updateConnectionBadge('error', 'Mất kết nối Server');
+      if (selectVoice) {
+        selectVoice.innerHTML = '<option value="" disabled selected>Mất kết nối Server...</option>';
       }
-      loadVoices();
-    } else {
-      throw new Error(`HTTP ${res.status}`);
+      availableVoices = [];
+      updateVoiceCountDisplays(0);
+      if (currentTab === 'library') renderLibrary();
+      return;
+    }
+  } catch (e) {
+    updateConnectionBadge('error', 'Mất kết nối Server');
+    return;
+  }
+
+  // Step 2: Auth check via voices catalog endpoint
+  try {
+    const voiceEndpoint = targetMode === 'voice' ? '/internal/v1/voices' : '/v1/voices';
+    let voiceRes = await serverFetch(voiceEndpoint);
+    if (!voiceRes.ok && targetMode === 'voice') {
+      voiceRes = await serverFetch('/v1/voices');
+    }
+
+    if (voiceRes.status === 401 || voiceRes.status === 403) {
+      updateConnectionBadge('auth-error', `Sai API Key (${voiceRes.status})`);
+      if (selectVoice) {
+        selectVoice.innerHTML = '<option value="" disabled selected>API Key không hợp lệ</option>';
+      }
+      availableVoices = [];
+      updateVoiceCountDisplays(0);
+      if (currentTab === 'library') renderLibrary();
+      return;
+    }
+
+    if (!voiceRes.ok) {
+      updateConnectionBadge('error', `Lỗi HTTP ${voiceRes.status}`);
+      return;
+    }
+
+    const data = await voiceRes.json();
+    availableVoices = data.voices || data.data || (Array.isArray(data) ? data : []);
+    const count = data.total_voices ?? availableVoices.length;
+
+    const statusMsg = targetMode === 'voice' ? `Voice Server (${count} giọng)` : 'App Server Online';
+    updateConnectionBadge('success', statusMsg);
+    if (pnaBanner) pnaBanner.classList.add('hidden');
+
+    populateVoiceSelect();
+    updateVoiceCountDisplays(availableVoices.length);
+    if (currentTab === 'library') renderLibrary();
+
+    if (targetMode === 'app' && getUserToken()) {
+      fetchUserProfile();
     }
   } catch (err) {
-    badge.className = 'flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/30';
-    statusText.textContent = 'Mất kết nối Server';
-    if (window.location.protocol === 'https:' && (getServerUrl().includes('localhost') || getServerUrl().includes('127.0.0.1'))) {
-      if (pnaBanner) pnaBanner.classList.remove('hidden');
+    updateConnectionBadge('error', 'Mất kết nối Server');
+    if (selectVoice) {
+      selectVoice.innerHTML = '<option value="" disabled selected>Mất kết nối Server...</option>';
     }
+    availableVoices = [];
+    updateVoiceCountDisplays(0);
+    if (currentTab === 'library') renderLibrary();
   }
 }
 
@@ -295,6 +425,8 @@ function switchTab(tabId) {
 }
 
 async function loadVoices() {
+  const key = getApiKey();
+  if (!key) return;
   try {
     const endpoint = targetMode === 'voice' ? '/internal/v1/voices' : '/v1/voices';
     let res = await serverFetch(endpoint);
@@ -336,13 +468,21 @@ function populateVoiceSelect() {
 }
 
 async function synthesizeSpeech() {
+  const key = getApiKey();
+  const selectVoice = document.getElementById('selectVoice');
+  const voiceVal = selectVoice ? selectVoice.value : '';
+
+  if (!key || !voiceVal || !availableVoices.length) {
+    showToast('Vui lòng nhập API Key hợp lệ và chọn giọng đọc!', 'error');
+    return;
+  }
+
   const text = document.getElementById('inputTtsText').value.trim();
   if (!text) {
     showToast('Vui lòng nhập văn bản cần tổng hợp!', 'error');
     return;
   }
 
-  const voiceVal = document.getElementById('selectVoice').value;
   const speed = parseFloat(document.getElementById('inputSpeed').value) || 1.0;
   const pitch = parseInt(document.getElementById('inputPitch').value) || 0;
   const emotion = parseInt(document.getElementById('inputEmotion').value) || 0;
@@ -412,6 +552,12 @@ function playGeneratedAudio(url) {
 }
 
 async function previewVoice(voiceId) {
+  const key = getApiKey();
+  if (!key) {
+    showToast('Vui lòng nhập API Key hợp lệ để nghe thử!', 'error');
+    return;
+  }
+
   try {
     showToast('Đang phát bản nghe thử...', 'info');
     let res;
@@ -562,6 +708,12 @@ async function toggleRecording() {
 
 // Mode 1 Action: Extract embedding .npz on Voice Server
 async function extractRecordedEmbedding() {
+  const key = getApiKey();
+  if (!key) {
+    showToast('Vui lòng nhập API Key hợp lệ!', 'error');
+    return;
+  }
+
   if (!recordedAudioBlob) {
     showToast('Chưa có mẫu âm thanh để trích xuất!', 'error');
     return;
@@ -664,5 +816,6 @@ async function saveCloneToAccount() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  initConnectionListeners();
   setTargetMode(targetMode);
 });
