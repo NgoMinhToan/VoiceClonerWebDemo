@@ -7,13 +7,21 @@
 ---
 
 ## 1. Trạng Thái Hiện Tại & Đánh Giá
-- **Vấn đề phát hiện:** Trước đây Web Demo mang các chuỗi tĩnh như "23 giọng", "công nghệ VieNeu-TTS v3", làm giảm tính linh hoạt khi kết nối đến các Voice Server có số lượng giọng khác nhau.
+- **Vấn đề phát hiện:** Trước đây Web Demo mang các chuỗi tĩnh như "23 giọng", "công nghệ VieNeu-TTS v3", tồn tại API key hardcode mặc định trong mã nguồn và yêu cầu người dùng phải bấm nút "Kết Nối" thủ công mỗi khi thay đổi URL hay API Key.
 - **Hành động khắc phục:**
   - Chuyển đổi toàn bộ hiển thị số lượng giọng (`#librarySubtitle`, `#voiceCountBadge`, Connection Status) sang dạng tính toán động từ `availableVoices.length` và API trả về.
   - Sử dụng hàm `fillSampleText()` đọc trực tiếp `sample_text` từ đối tượng giọng nói được server cung cấp.
   - Loại bỏ các thẻ `<option>` tĩnh trong `<select id="selectVoice">`, tạo động hoàn toàn khi nạp API.
   - Bổ sung bộ chuyển chế độ (Mode Toggle Pill) trên Header: "1. Voice Server (8001)" và "2. App Server (8000)".
-  - Tách biệt cấu hình `Server URL` và `Key` độc lập theo từng chế độ trong `localStorage`, bảo toàn giá trị rỗng khi người dùng xóa key để kiểm thử bảo mật API Gateway.
+  - **Cơ chế Phản Ứng (Reactive Connection) & Bỏ Nút Kết Nối Thủ Công:**
+    - Loại bỏ nút "Kết Nối" thủ công, thay bằng cơ chế tự động kết nối và nạp danh mục qua hàm `debounce(fn, 400)` lắng nghe sự kiện `input` và `change` trên `#inputServerUrl` và `#inputApiKey`.
+    - Quy trình xác thực 2 bước tự động (Two-Step Health & Auth Discovery):
+      - Bước 1 (Health check): Kiểm tra trạng thái máy chủ (`/internal/v1/health` hoặc `/health`). Nếu server không phản hồi -> Connection Badge báo "Mất kết nối Server" (màu đỏ).
+      - Bước 2 (Auth & Catalog discovery): Gửi `X-API-Key` tới endpoint danh mục giọng (`/internal/v1/voices` hoặc `/v1/voices`). Nếu mã lỗi 401 hoặc 403 -> Connection Badge báo "Sai API Key (401/403)" (màu vàng amber). Nếu thành công -> nạp danh mục giọng động và Badge hiển thị trạng thái "Voice Server (N giọng)" hoặc "App Server Online" (màu xanh lá).
+      - Trạng thái chưa nhập: Khi URL hoặc Key để trống -> Badge báo "Chưa nhập API Key" (màu xám trung tính).
+  - **Bảo Mật Thông Tin Xác Thực (Zero-Storage Credentials):**
+    - Loại bỏ hoàn toàn API key hardcode mặc định khỏi mã nguồn HTML và JS.
+    - Không lưu trữ API key vào `localStorage` (`vc_voice_api_key`, `vc_client_api_key`), đọc trực tiếp từ input DOM để bảo mật và hỗ trợ kiểm thử tiêu cực (negative testing) khi xóa trắng key.
   - Tích hợp Modal đăng nhập/đăng ký tài khoản App Server (`/v1/auth/login`, `/v1/auth/register`) và hiển thị thanh User Quota Bar.
 
 ---
@@ -36,6 +44,8 @@
 - [x] Test workflow tự động deploy lên GitHub Pages (`deploy-pages.yml`).
 - [x] Test cấu trúc Dockerfile (`nginx:alpine` với cổng 80 và healthcheck wget).
 - [x] Test logic chuyển đổi 2 chế độ và hỗ trợ đầy đủ các endpoint.
-- [x] Test cấu trúc phần tử DOM: Chuyển đổi Mode buttons, Modal xác thực người dùng, Quota Bar, và bộ điều khiển âm thanh (`test_dom_modal_and_controls_structure`).
-- [x] Test các hàm xử lý JavaScript: `setTargetMode`, `saveConnectionSettings`, `submitAuthForm`, `logoutUser`, `updateVoiceCountDisplays`, `fillSampleText`, `synthesizeSpeech`, `saveCloneToAccount` (`test_js_client_logic_handlers`).
-- [x] Toàn bộ 6/6 test cases trong `VoiceClonerWebDemo/tests/` đều vượt qua 100%.
+- [x] Test cấu trúc phần tử DOM: Chuyển đổi Mode buttons, reactive connection inputs (`#inputServerUrl`, `#inputApiKey`, `#connectionBadge`), Modal xác thực người dùng, Quota Bar, và bộ điều khiển âm thanh (`test_dom_modal_and_controls_structure`).
+- [x] Test loại bỏ hoàn toàn nút "Kết Nối" thủ công trong giao diện DOM (`assert "Kết Nối" not in content`).
+- [x] Test các hàm xử lý JavaScript: `debounce`, `handleConnectionChange`, `setTargetMode`, `submitAuthForm`, `logoutUser`, `fetchUserProfile`, `updateVoiceCountDisplays`, `fillSampleText`, `synthesizeSpeech`, `saveCloneToAccount` (`test_js_client_logic_handlers`).
+- [x] Test bảo mật thông tin xác thực và kết nối phản ứng: không còn default hardcoded API keys (`vtts_worker_...`, `vc_live_...`) và không lưu key trong `localStorage` (`test_app_js_dual_mode_and_dynamic_discovery`).
+- [x] Toàn bộ test cases trong `VoiceClonerWebDemo/tests/` đều vượt qua 100%.
